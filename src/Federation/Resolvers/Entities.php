@@ -25,18 +25,10 @@ class Entities
      */
     public function __invoke(mixed $root, array $args, GraphQLContext $context, ResolveInfo $resolveInfo): array
     {
-        $results = [];
-
-        $representations = $args['representations'];
-        $representationHashes = array_map('serialize', $representations);
-
-        $assignResultsByHash = static function ($result, string $hash) use ($representationHashes, &$results): void {
-            foreach ($representationHashes as $index => $h) {
-                if ($hash === $h) {
-                    $results[$index] = $result;
-                }
-            }
-        };
+        /**
+         * @var array<string, list<int>> $hashIndices
+         */
+        $hashIndices = [];
 
         /**
          * Firstly, representations are grouped by typename to allow assigning the correct resolver for each entity.
@@ -45,11 +37,20 @@ class Entities
          * @var array<string, array<string, array<string, mixed>>> $groupedRepresentations
          */
         $groupedRepresentations = [];
-        foreach ($representations as $index => $representation) {
+        foreach ($args['representations'] as $index => $representation) {
+            $hash = serialize($representation);
             $typename = $representation['__typename'];
-            $hash = $representationHashes[$index];
+
+            $hashIndices[$hash][] = $index;
             $groupedRepresentations[$typename][$hash] = $representation;
         }
+
+        $results = [];
+        $assignResultsByHash = static function (mixed $result, string $hash) use ($hashIndices, &$results): void {
+            foreach ($hashIndices[$hash] as $index) {
+                $results[$index] = $result;
+            }
+        };
 
         foreach ($groupedRepresentations as $typename => $representations) {
             assert(is_string($typename), 'Never numeric due to GraphQL\Utils::isValidNameError()');
